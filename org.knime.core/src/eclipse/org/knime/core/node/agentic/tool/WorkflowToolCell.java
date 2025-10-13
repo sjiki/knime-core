@@ -110,6 +110,7 @@ import org.knime.core.node.workflow.capture.WorkflowSegmentExecutor.WorkflowSegm
 import org.knime.core.node.workflow.virtual.VirtualNodeContext.Restriction;
 import org.knime.core.util.FileUtil;
 import org.knime.core.util.JsonUtil;
+import org.knime.core.util.Pair;
 
 import jakarta.json.JsonObject;
 import jakarta.json.JsonValue;
@@ -499,6 +500,14 @@ public final class WorkflowToolCell extends FileStoreCell implements WorkflowToo
                 FileUtils.deleteQuietly(dataAreaPath.toFile());
             }
         }
+    }
+
+    @Override
+    public ToolResult execute(final String parameters, final List<Pair<NodeID, Integer>> inputs,
+        final WorkflowManager wfm, final ExecutionContext exec, final Map<String, String> executionHints) {
+        var ws = deserializeWorkflowSegment();
+        WorkflowSegmentExecutor.executeWorkflow(ws, wfm, inputs);
+        return null;
     }
 
     private Optional<Path> copyDataAreaToTempDir() throws IOException {

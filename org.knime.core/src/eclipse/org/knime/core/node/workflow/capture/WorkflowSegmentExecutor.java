@@ -392,6 +392,19 @@ public final class WorkflowSegmentExecutor {
             executionResult.getSecond(), recursivelyExtractNodeMessages(m_wfm));
     }
 
+    /**
+     * TODO
+     *
+     * @param ws
+     * @param wfm TODO workflow is expected to a comply with certain conventions (specific IO nodes, etc.)
+     * @param inputs
+     */
+    // TODO naming
+    public static void executeWorkflow(final WorkflowSegment ws, final WorkflowManager wfm,
+        final List<Pair<NodeID, Integer>> inputs) {
+        // TODO
+    }
+
     private void checkWfmNonNull() {
         if (m_wfm == null) {
             throw new IllegalStateException(

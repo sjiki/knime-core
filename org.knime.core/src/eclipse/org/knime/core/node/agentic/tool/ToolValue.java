@@ -48,12 +48,16 @@
  */
 package org.knime.core.node.agentic.tool;
 
+import java.util.List;
 import java.util.Map;
 
 import org.knime.core.data.DataValue;
 import org.knime.core.data.ExtensibleUtilityFactory;
 import org.knime.core.node.ExecutionContext;
 import org.knime.core.node.port.PortObject;
+import org.knime.core.node.workflow.NodeID;
+import org.knime.core.node.workflow.WorkflowManager;
+import org.knime.core.util.Pair;
 
 /**
  * A ToolValue that represents a tool that can be used by an AI Agent.
@@ -138,13 +142,28 @@ public interface ToolValue extends DataValue {
      * Executes the tool with the given parameters and inputs.
      *
      * @param parameters the parameters to use for the tool execution
-     * @param inputs
+     * @param inputs TODO
      * @param exec the execution context for cancellation and to create tables
      * @param executionHints optional hints controlling the tool execution - doesn't need to be respected by the
      *            implementation
      * @return the tool result
      */
     ToolResult execute(String parameters, PortObject[] inputs, ExecutionContext exec,
+        Map<String, String> executionHints);
+
+    /**
+     * Executes the tool with the given parameters and inputs.
+     *
+     * @param parameters the parameters to use for the tool execution
+     * @param inputs TODO
+     * @param wfm TODO
+     * @param exec the execution context for cancellation and to create tables
+     * @param executionHints optional hints controlling the tool execution - doesn't need to be respected by the
+     *            implementation
+     * @return the tool result
+     * @since 5.8
+     */
+    ToolResult execute(String parameters, List<Pair<NodeID, Integer>> inputs, WorkflowManager wfm, ExecutionContext exec,
         Map<String, String> executionHints);
 
 }
