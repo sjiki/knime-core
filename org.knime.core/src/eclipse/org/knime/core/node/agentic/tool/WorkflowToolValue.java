@@ -90,7 +90,7 @@ public interface WorkflowToolValue extends ToolValue {
      * @param outputs see {@link ToolValue.ToolResult#outputs()}
      * @param virtualProject the virtual project containing the workflow that has been used for the tool the execution.
      *            It's {@code null} if execution-mode is not 'detached' and view-node-ids are not to be included). NOTE:
-     *            This requires the caller to take care of disposing the 'virtual workflow'.
+     *            This requires the caller to take care of disposing the 'virtual workflow'. - TODO update
      * @param viewNodeIds an array of node IDs of the view nodes in the workflow; {@code null} if view-nodes aren't to
      *            be returned
      * @noreference This record is not intended to be referenced by clients.

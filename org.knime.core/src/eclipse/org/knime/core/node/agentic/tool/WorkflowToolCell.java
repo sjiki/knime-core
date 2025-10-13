@@ -492,7 +492,8 @@ public final class WorkflowToolCell extends FileStoreCell implements WorkflowToo
             return new WorkflowToolResult(message, null, null, null);
         } finally {
             if (wsExecutor != null && disposeWorkflowSegmentExecutor) {
-                wsExecutor.dispose();
+                // TODO
+                // wsExecutor.dispose();
             }
             if (dataAreaPath != null) {
                 FileUtils.deleteQuietly(dataAreaPath.toFile());
