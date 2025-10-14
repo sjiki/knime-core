@@ -90,6 +90,7 @@ import org.knime.core.node.workflow.NodeUIInformation;
 import org.knime.core.node.workflow.SingleNodeContainer;
 import org.knime.core.node.workflow.SubNodeContainer;
 import org.knime.core.node.workflow.VariableTypeRegistry;
+import org.knime.core.node.workflow.WorkflowAnnotationID;
 import org.knime.core.node.workflow.WorkflowCopyContent;
 import org.knime.core.node.workflow.WorkflowCreationHelper;
 import org.knime.core.node.workflow.WorkflowDataRepository;
@@ -400,9 +401,31 @@ public final class WorkflowSegmentExecutor {
      * @param inputs
      */
     // TODO naming
-    public static void executeWorkflow(final WorkflowSegment ws, final WorkflowManager wfm,
+    public static void executeWorkflow(final WorkflowSegment ws, final WorkflowManager parent,
         final List<Pair<NodeID, Integer>> inputs) {
-        // TODO
+        var wfm = ws.loadWorkflow();
+
+        var persistor =
+            wfm.copy(WorkflowCopyContent.builder().setNodeIDs(wfm.getNodeContainers().toArray(NodeID[]::new))
+                .setAnnotationIDs(wfm.getWorkflowAnnotationIDs().toArray(WorkflowAnnotationID[]::new)).build());
+        var copyContent = wfm.paste(persistor);
+
+        var inputNM = wfm.findNodes(DefaultVirtualPortObjectInNodeModel.class, false);
+        var outputNM = wfm.findNodes(DefaultVirtualPortObjectOutNodeModel.class, false);
+        var inputNode = wfm.getNodeContainer(inputNM.keySet().iterator().next());
+        var outputNode = wfm.getNodeContainer(outputNM.keySet().iterator().next());
+        // TODO sanity checks
+
+        // TODO connect inputs
+        // TODO connect outputs
+
+        // collapse into component
+        var componentId = wfm.convertMetaNodeToSubNode(
+            wfm.collapseIntoMetaNode(copyContent.getNodeIDs(), copyContent.getAnnotationIDs(), wfm.getName())
+                .getCollapsedMetanodeID())
+            .getConvertedNodeID();
+
+        // TODO layouting
     }
 
     private void checkWfmNonNull() {
