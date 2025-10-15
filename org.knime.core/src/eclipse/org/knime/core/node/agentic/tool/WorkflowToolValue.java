@@ -48,12 +48,15 @@
  */
 package org.knime.core.node.agentic.tool;
 
+import java.util.List;
 import java.util.Map;
 
 import org.knime.core.node.ExecutionContext;
 import org.knime.core.node.port.PortObject;
+import org.knime.core.node.workflow.NodeID;
 import org.knime.core.node.workflow.WorkflowManager;
 import org.knime.core.node.workflow.capture.WorkflowSegmentExecutor.ExecutionMode;
+import org.knime.core.util.Pair;
 
 /**
  * A {@link ToolValue} that is implemented by a workflow.
@@ -84,9 +87,21 @@ public interface WorkflowToolValue extends ToolValue {
         Map<String, String> executionHints);
 
     /**
+     * TODO
+     *
+     * {@inheritDoc}
+     *
+     * @since 5.8
+     */
+    @Override
+    WorkflowToolResult execute(final String parameters, final List<Pair<NodeID, Integer>> inputs,
+        final WorkflowManager wfm, final ExecutionContext exec, final Map<String, String> executionHints);
+
+    /**
      * The tool execution result with additional information only relevant for workflow-tool-execution.
      *
      * @param message see {@link ToolValue.ToolResult#message()}
+     * @param ids TODO desc and naming
      * @param outputs see {@link ToolValue.ToolResult#outputs()}
      * @param virtualProject the virtual project containing the workflow that has been used for the tool the execution.
      *            It's {@code null} if execution-mode is not 'detached' and view-node-ids are not to be included). NOTE:
@@ -95,7 +110,7 @@ public interface WorkflowToolValue extends ToolValue {
      *            be returned
      * @noreference This record is not intended to be referenced by clients.
      */
-    public record WorkflowToolResult(String message, PortObject[] outputs, WorkflowManager virtualProject,
+    public record WorkflowToolResult(String message, String[] ids, PortObject[] outputs, WorkflowManager virtualProject,
         String[] viewNodeIds) implements ToolResult {
         //
     }

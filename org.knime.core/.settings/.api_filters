@@ -138,6 +138,22 @@
             </message_arguments>
         </filter>
     </resource>
+    <resource path="src/eclipse/org/knime/core/node/agentic/tool/WorkflowToolValue.java" type="org.knime.core.node.agentic.tool.WorkflowToolValue">
+        <filter id="403804204">
+            <message_arguments>
+                <message_argument value="org.knime.core.node.agentic.tool.WorkflowToolValue"/>
+                <message_argument value="execute(String, List&lt;Pair&lt;NodeID,Integer&gt;&gt;, WorkflowManager, ExecutionContext, Map&lt;String,String&gt;)"/>
+            </message_arguments>
+        </filter>
+    </resource>
+    <resource path="src/eclipse/org/knime/core/node/agentic/tool/WorkflowToolValue.java" type="org.knime.core.node.agentic.tool.WorkflowToolValue$WorkflowToolResult">
+        <filter id="338722907">
+            <message_arguments>
+                <message_argument value="org.knime.core.node.agentic.tool.WorkflowToolValue.WorkflowToolResult"/>
+                <message_argument value="WorkflowToolResult(String, PortObject[], WorkflowManager, String[])"/>
+            </message_arguments>
+        </filter>
+    </resource>
     <resource path="src/eclipse/org/knime/core/node/workflow/WorkflowDataRepository.java" type="org.knime.core.node.workflow.WorkflowDataRepository">
         <filter comment="internal API" id="336658481">
             <message_arguments>

@@ -484,13 +484,13 @@ public final class WorkflowToolCell extends FileStoreCell implements WorkflowToo
                     disposeWorkflowSegmentExecutor = false;
                 }
             }
-            return new WorkflowToolResult(extractMessage(result), removeMessageOutput(result.portObjectCopies()),
-                virtualProject, viewNodeIds);
+            return new WorkflowToolResult(extractMessage(result), null /* TODO */,
+                removeMessageOutput(result.portObjectCopies()), virtualProject, viewNodeIds);
         } catch (Exception ex) {
             var message = "Failed to execute tool: " + name + ": " + ex.getMessage();
             NodeLogger.getLogger(getClass()).error(message, ex);
             disposeWorkflowSegmentExecutor = !isDebugMode;
-            return new WorkflowToolResult(message, null, null, null);
+            return new WorkflowToolResult(message, null, null, null, null);
         } finally {
             if (wsExecutor != null && disposeWorkflowSegmentExecutor) {
                 // TODO
@@ -503,11 +503,14 @@ public final class WorkflowToolCell extends FileStoreCell implements WorkflowToo
     }
 
     @Override
-    public ToolResult execute(final String parameters, final List<Pair<NodeID, Integer>> inputs,
+    public WorkflowToolResult execute(final String parameters, final List<Pair<NodeID, Integer>> inputs,
         final WorkflowManager wfm, final ExecutionContext exec, final Map<String, String> executionHints) {
         var ws = deserializeWorkflowSegment();
-        WorkflowSegmentExecutor.executeWorkflow(ws, wfm, inputs);
-        return null;
+        var pair = WorkflowSegmentExecutor.executeWorkflow(ws, wfm, inputs);
+        var result = pair.getFirst();
+        var ids = pair.getSecond();
+        return new WorkflowToolResult(extractMessage(result), removeMessageOutput(ids),
+            removeMessageOutput(result.portObjectCopies()), null, null);
     }
 
     private Optional<Path> copyDataAreaToTempDir() throws IOException {
@@ -527,7 +530,7 @@ public final class WorkflowToolCell extends FileStoreCell implements WorkflowToo
         }
     }
 
-    private PortObject[] removeMessageOutput(final PortObject[] outputs) {
+    private <T> T[] removeMessageOutput(final T[] outputs) {
         if (outputs == null) {
             return null;
         }
