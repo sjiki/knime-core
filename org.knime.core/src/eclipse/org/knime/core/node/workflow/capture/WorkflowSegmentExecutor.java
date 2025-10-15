@@ -432,7 +432,7 @@ public final class WorkflowSegmentExecutor {
      */
     // TODO naming
     public static Pair<WorkflowSegmentExecutionResult, String[]> executeWorkflow(final WorkflowSegment ws,
-        final WorkflowManager parent, final List<Pair<NodeID, Integer>> inputs) {
+        final WorkflowManager parent, final List<Pair<NodeID, Integer>> inputs, final Map<String, JsonValue> parameters) {
         var wfm = ws.loadWorkflow();
 
         var orgNodeIds = wfm.getNodeContainers().stream().map(NodeContainer::getID).toArray(NodeID[]::new);
@@ -480,9 +480,18 @@ public final class WorkflowSegmentExecutor {
 
         // collapse into component
         var componentId = parent.convertMetaNodeToSubNode(
-            parent.collapseIntoMetaNode(copyContent.getNodeIDs(), copyContent.getAnnotationIDs(), parent.getName())
+            parent.collapseIntoMetaNode(copyContent.getNodeIDs(), copyContent.getAnnotationIDs(), ws.getName())
                 .getCollapsedMetanodeID())
             .getConvertedNodeID();
+
+        // configuration nodes
+        try {
+            var component = (SubNodeContainer)parent.getNodeContainer(componentId);
+            component.getWorkflowManager().setConfigurationNodes(parameters);
+        } catch (JsonException | InvalidSettingsException ex) {
+            // TODO
+            throw new RuntimeException(ex);
+        }
 
         // TODO layouting
 

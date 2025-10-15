@@ -246,6 +246,12 @@ public final class WorkflowToolCell extends FileStoreCell implements WorkflowToo
         var paramSchema = JsonUtil.getProvider().createObjectBuilder();
         for (var configNodeEntry : configNodes.entrySet()) {
             var paramName = configNodeEntry.getKey();
+            // remove "-<nodeId>" suffix from config node name
+            // TODO re-visit (parameter name clashes etc.)
+            var dashIdx = paramName.lastIndexOf('-');
+            if (dashIdx > 0) {
+                paramName = paramName.substring(0, dashIdx);
+            }
             var dialogNode = configNodeEntry.getValue();
             var value = dialogNode.getDefaultValue().toJson();
             var valueWithDescription = JsonUtil.getProvider().createObjectBuilder((JsonObject)value);
@@ -506,7 +512,8 @@ public final class WorkflowToolCell extends FileStoreCell implements WorkflowToo
     public WorkflowToolResult execute(final String parameters, final List<Pair<NodeID, Integer>> inputs,
         final WorkflowManager wfm, final ExecutionContext exec, final Map<String, String> executionHints) {
         var ws = deserializeWorkflowSegment();
-        var pair = WorkflowSegmentExecutor.executeWorkflow(ws, wfm, inputs);
+        // TODO check parameters blank?
+        var pair = WorkflowSegmentExecutor.executeWorkflow(ws, wfm, inputs, parseParameters(parameters));
         var result = pair.getFirst();
         var ids = pair.getSecond();
         return new WorkflowToolResult(extractMessage(result), removeMessageOutput(ids),
