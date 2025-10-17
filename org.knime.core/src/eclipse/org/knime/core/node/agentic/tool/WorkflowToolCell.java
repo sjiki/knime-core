@@ -509,15 +509,24 @@ public final class WorkflowToolCell extends FileStoreCell implements WorkflowToo
     }
 
     @Override
+    // TODO de-duplicate
     public WorkflowToolResult execute(final String parameters, final List<Pair<NodeID, Integer>> inputs,
         final WorkflowManager wfm, final ExecutionContext exec, final Map<String, String> executionHints) {
         var ws = deserializeWorkflowSegment();
         // TODO check parameters blank?
-        var pair = WorkflowSegmentExecutor.executeWorkflow(ws, wfm, inputs, parseParameters(parameters));
-        var result = pair.getFirst();
-        var ids = pair.getSecond();
-        return new WorkflowToolResult(extractMessage(result), removeMessageOutput(ids),
-            removeMessageOutput(result.portObjectCopies()), null, null);
+        var result = WorkflowSegmentExecutor.executeWorkflow(ws, wfm, inputs, parseParameters(parameters));
+
+        String[] viewNodeIds = null;
+        if (Boolean.parseBoolean(executionHints.get("with-view-nodes"))) {
+            viewNodeIds = result.component().getWorkflowManager().getNodeContainers().stream()
+                .filter(nc -> nc instanceof NativeNodeContainer nnc
+                    && nnc.getNode().getFactory() instanceof WizardPageContribution wpc && wpc.hasNodeView()) //
+                .map(nc -> NodeIDSuffix.create(wfm.getID(), nc.getID()).toString()).toArray(String[]::new);
+        }
+
+        return new WorkflowToolResult(extractMessage(result.result()), removeMessageOutput(result.ids()),
+            removeMessageOutput(result.result().portObjectCopies()),
+            viewNodeIds != null && viewNodeIds.length > 0 ? wfm : null, viewNodeIds);
     }
 
     private Optional<Path> copyDataAreaToTempDir() throws IOException {

@@ -408,6 +408,7 @@ public final class WorkflowSegmentExecutor {
         var projWfm = hostNode.getParent().getProjectWFM();
         WorkflowManager wfm;
         try {
+            // TODO proper workflow name?
             wfm = createTemporaryWorkflowProject(projWfm.getWorkflowDataRepository(), projWfm.getContextV2());
         } catch (KNIMEException ex) {
             // TODO
@@ -428,10 +429,11 @@ public final class WorkflowSegmentExecutor {
      * @param parent
      * @param wfm TODO workflow is expected to a comply with certain conventions (specific IO nodes, etc.)
      * @param inputs
+     * @param parameters TODO
      * @return TODO desc and return type
      */
     // TODO naming
-    public static Pair<WorkflowSegmentExecutionResult, String[]> executeWorkflow(final WorkflowSegment ws,
+    public static WorkflowSegmentExecutionResult2 executeWorkflow(final WorkflowSegment ws,
         final WorkflowManager parent, final List<Pair<NodeID, Integer>> inputs, final Map<String, JsonValue> parameters) {
         var wfm = ws.loadWorkflow();
 
@@ -485,8 +487,8 @@ public final class WorkflowSegmentExecutor {
             .getConvertedNodeID();
 
         // configuration nodes
+        var component = (SubNodeContainer)parent.getNodeContainer(componentId);
         try {
-            var component = (SubNodeContainer)parent.getNodeContainer(componentId);
             component.getWorkflowManager().setConfigurationNodes(parameters);
         } catch (JsonException | InvalidSettingsException ex) {
             // TODO
@@ -497,14 +499,22 @@ public final class WorkflowSegmentExecutor {
 
         // execute and extract tool outputs
         parent.executeAllAndWaitUntilDone();
-        var outputs =
-            ((DefaultVirtualPortObjectOutNodeModel)((NativeNodeContainer)parent.getNodeContainer(outputNodeId))
-                .getNodeModel()).getOutObjects();
-        var ids = parent.getIncomingConnectionsFor(outputNodeId).stream()
-            .map(cc -> NodeIDSuffix.create(parent.getID(), cc.getSource()) + "#" + cc.getSourcePort())
+        var outputs = parent.getIncomingConnectionsFor(outputNodeId).stream() //
+            .filter(cc -> cc.getSource().equals(componentId)) //
+            .map(cc -> component.getOutPort(cc.getSourcePort()).getPortObject()) //
+            .toArray(PortObject[]::new);
+        var ids = parent.getIncomingConnectionsFor(outputNodeId).stream() //
+            .filter(cc -> cc.getSource().equals(componentId)) //
+            .map(cc -> NodeIDSuffix.create(parent.getID(), cc.getSource()) + "#" + cc.getSourcePort()) //
             .toArray(String[]::new);
         // TODO flow variables and error/warning messages
-        return Pair.create(new WorkflowSegmentExecutionResult(outputs, List.of(), List.of()), ids);
+        return new WorkflowSegmentExecutionResult2(new WorkflowSegmentExecutionResult(outputs, List.of(), List.of()),
+            ids, component);
+    }
+
+    // TODO naming and structure!!
+    public record WorkflowSegmentExecutionResult2(WorkflowSegmentExecutionResult result, String[] ids,
+        SubNodeContainer component) {
     }
 
     private void checkWfmNonNull() {
