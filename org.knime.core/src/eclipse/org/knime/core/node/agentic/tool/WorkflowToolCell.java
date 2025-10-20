@@ -101,6 +101,7 @@ import org.knime.core.node.workflow.NodeID;
 import org.knime.core.node.workflow.NodeID.NodeIDSuffix;
 import org.knime.core.node.workflow.WorkflowManager;
 import org.knime.core.node.workflow.capture.IsolatedExecutor;
+import org.knime.core.node.workflow.capture.IsolatedExecutor.WorkflowSegmentExecutionResult;
 import org.knime.core.node.workflow.capture.WorkflowSegment;
 import org.knime.core.node.workflow.capture.WorkflowSegment.Input;
 import org.knime.core.node.workflow.capture.WorkflowSegment.Output;
@@ -467,12 +468,12 @@ public final class WorkflowToolCell extends FileStoreCell implements WorkflowToo
         Path dataAreaPath = null;
         boolean disposeWorkflowSegmentExecutor = false;
         try {
-            var metanodeName = (isDebugMode ? "Debug: " : "") + name;
+            var workflowName = (isDebugMode ? "Debug: " : "") + name;
             dataAreaPath = copyDataAreaToTempDir().orElse(null);
             wsExecutor = WorkflowSegmentExecutor.builder( //
                 hostNode, //
                 execMode, //
-                "workflow name TODO", //
+                workflowName, //
                 warning -> {
                 }, //
                 exec, //
@@ -483,8 +484,8 @@ public final class WorkflowToolCell extends FileStoreCell implements WorkflowToo
                 StringUtils.isBlank(parameters) ? null : parseParameters(parameters), //
                 dataAreaPath, //
                 Restriction.WORKFLOW_RELATIVE_RESOURCE_ACCESS, Restriction.WORKFLOW_DATA_AREA_ACCESS);
-            disposeWorkflowSegmentExecutor = !isDebugMode || result.portObjectCopies() != null;
-            var wfm = wsExecutor.getWorkflowManager();
+            disposeWorkflowSegmentExecutor = !isDebugMode || result.outputs() != null;
+            var wfm = wsExecutor.getWorkflow();
             String[] viewNodeIds = null;
             WorkflowManager virtualProject = null;
             if (Boolean.parseBoolean(executionHints.get("with-view-nodes"))) {
@@ -498,7 +499,7 @@ public final class WorkflowToolCell extends FileStoreCell implements WorkflowToo
                 }
             }
             return new WorkflowToolResult(extractMessage(result), null /* TODO */,
-                removeMessageOutput(result.portObjectCopies()), virtualProject, viewNodeIds);
+                removeMessageOutput(result.outputs()), virtualProject, viewNodeIds);
         } catch (Exception ex) {
             var message = "Failed to execute tool: " + name + ": " + ex.getMessage();
             NodeLogger.getLogger(getClass()).error(message, ex);
@@ -556,7 +557,7 @@ public final class WorkflowToolCell extends FileStoreCell implements WorkflowToo
      * @return the extracted tool message as a single string.
      */
     private String extractMessage(final WorkflowSegmentExecutionResult result) {
-        var outputs = result.portObjectCopies();
+        var outputs = result.outputs();
         if (outputs == null) {
             return "Tool execution failed with: " + result.compileSingleErrorMessage();
         }

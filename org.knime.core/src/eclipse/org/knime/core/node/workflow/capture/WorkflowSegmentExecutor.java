@@ -62,7 +62,6 @@ import java.util.stream.Stream;
 
 import org.knime.core.node.CanceledExecutionException;
 import org.knime.core.node.ExecutionContext;
-import org.knime.core.node.InvalidSettingsException;
 import org.knime.core.node.KNIMEException;
 import org.knime.core.node.NodeLogger;
 import org.knime.core.node.port.PortObject;
@@ -81,11 +80,8 @@ import org.knime.core.node.workflow.WorkflowManager;
 import org.knime.core.node.workflow.contextv2.AnalyticsPlatformExecutorInfo;
 import org.knime.core.node.workflow.contextv2.LocationInfo;
 import org.knime.core.node.workflow.contextv2.WorkflowContextV2;
-import org.knime.core.node.workflow.virtual.parchunk.FlowVirtualScopeContext;
 import org.knime.core.util.Pair;
 import org.knime.core.util.ThreadPool;
-
-import jakarta.json.JsonException;
 
 /**
  * TODO update
@@ -145,7 +141,7 @@ public final class WorkflowSegmentExecutor {
          * @return TODO
          */
         public IsolatedExecutor.Builder isolated(final boolean executeAll) {
-            return new IsolatedExecutor.Builder(m_params);
+            return new IsolatedExecutor.Builder(m_params, executeAll);
         }
 
         /**
@@ -174,21 +170,6 @@ public final class WorkflowSegmentExecutor {
         Consumer<String> loadWarningConsumer, ExecutionContext exec, boolean collectMessages) {
 
     }
-
-    private WorkflowManager m_wfm;
-
-    private WorkflowManager m_hostWfm;
-
-    private final boolean m_shallDisposeHostWfm;
-    private final NativeNodeContainer m_hostNode;
-
-    private FlowVirtualScopeContext m_flowVirtualScopeContext;
-
-    private NodeID m_virtualStartID;
-
-    private NodeID m_virtualEndID;
-
-    private final boolean m_executeAllNodes;
 
     /**
      * Controls how the workflow segment is executed.
@@ -238,30 +219,15 @@ public final class WorkflowSegmentExecutor {
             .build();
     }
 
-    /**
-     *
-     */
-    public void configureWorkflow()
-        throws JsonException, InvalidSettingsException {
-        checkWfmNonNull();
-    }
-
-    private void checkWfmNonNull() {
-        if (m_wfm == null) {
-            throw new IllegalStateException(
-                "Can't extract error messages from workflow segment. Workflow has been disposed already.");
-        }
-    }
-
-    static void executeAndWait(final WorkflowManager wfm, final ExecutionContext exec,
-        final AtomicReference<Exception> exception) {
+    static void executeAndWait(final NativeNodeContainer hostNode, final WorkflowManager wfm,
+        final ExecutionContext exec, final NodeID virtualEndID, final AtomicReference<Exception> exception) {
         // code copied from SubNodeContainer#executeWorkflowAndWait
         final Runnable inBackgroundRunner = () -> {
-            executeThisSegmentWithoutWaiting();
+            executeThisSegmentWithoutWaiting(wfm, virtualEndID);
             try {
                 waitWhileInExecution(wfm, exec);
             } catch (InterruptedException | CanceledExecutionException e) { // NOSONAR
-                wfm.cancelExecution(m_hostNode);
+                wfm.cancelExecution(hostNode);
                 Thread.currentThread().interrupt();
             }
         };
@@ -272,7 +238,7 @@ public final class WorkflowSegmentExecutor {
                 currentPool.runInvisible(Executors.callable(inBackgroundRunner::run));
             } catch (ExecutionException ee) {
                 exception.compareAndSet(null, ee);
-                NodeLogger.getLogger(this.getClass()).error(
+                NodeLogger.getLogger(WorkflowSegmentExecutor.class).error(
                     ee.getCause().getClass().getSimpleName() + " while waiting for to-be-executed workflow to complete",
                     ee);
             } catch (final InterruptedException e) { // NOSONAR interrupt is handled by WFM cancellation
@@ -284,11 +250,11 @@ public final class WorkflowSegmentExecutor {
         }
     }
 
-    private void executeThisSegmentWithoutWaiting() {
-        if (m_executeAllNodes) {
-            m_wfm.executeAll();
+    private static void executeThisSegmentWithoutWaiting(final WorkflowManager wfm, final NodeID virtualEndID) {
+        if (virtualEndID != null) {
+            wfm.executeUpToHere(virtualEndID);
         } else {
-            m_wfm.executeUpToHere(m_virtualEndID);
+            wfm.executeAll();
         }
     }
 
@@ -300,32 +266,7 @@ public final class WorkflowSegmentExecutor {
         }
     }
 
-    /**
-     * Cancels the execution if it is running and removes the virtual node containing the workflow segment from the
-     * hosting workflow.
-     */
-    public void dispose() {
-        cancel();
-        m_wfm.getParent().removeNode(m_wfm.getID());
-        m_wfm = null;
-        if (m_shallDisposeHostWfm) {
-            WorkflowManager.ROOT.removeProject(m_hostWfm.getID());
-        }
-        m_hostWfm = null;
-    }
-
-    /**
-     * Cancels the execution of the workflow segment.
-     * @throws IllegalStateException if the underlying workflow has been disposed already
-     */
-    public void cancel() {
-        checkWfmNonNull();
-        if (m_wfm.getNodeContainerState().isExecutionInProgress()) {
-            m_wfm.cancelExecution(m_wfm);
-        }
-    }
-
-    private static List<FlowVariable> getFlowVariablesFromNC(final SingleNodeContainer nc) {
+    static List<FlowVariable> getFlowVariablesFromNC(final SingleNodeContainer nc) {
         Stream<FlowVariable> res;
         if (nc instanceof NativeNodeContainer) {
             res = ((NativeNodeContainer)nc).getNodeModel()
@@ -352,7 +293,7 @@ public final class WorkflowSegmentExecutor {
      * and workflow (1st) port). Otherwise those will always take precedence and can possibly
      * interfere with the workflow being executed.
      */
-    private static List<FlowVariable> collectOutputFlowVariablesFromUpstreamNodes(final NodeContainer thisNode) {
+    static List<FlowVariable> collectOutputFlowVariablesFromUpstreamNodes(final NodeContainer thisNode) {
         // skip flow var (0th) and workflow (1st) input port
         WorkflowManager wfm = thisNode.getParent();
         List<FlowVariable> res = new ArrayList<>();
@@ -380,16 +321,6 @@ public final class WorkflowSegmentExecutor {
             }
         }
         return res;
-    }
-
-    /**
-     * @return the workflow manager of the (to be) executed workflow segment
-     * @throws IllegalStateException if the workflow segment executor has been disposed already
-     */
-    // TODO remove
-    public WorkflowManager getWorkflowManager() {
-        checkWfmNonNull();
-        return m_wfm;
     }
 
 }

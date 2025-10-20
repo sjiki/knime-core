@@ -162,6 +162,56 @@
             </message_arguments>
         </filter>
     </resource>
+    <resource path="src/eclipse/org/knime/core/node/workflow/capture/WorkflowSegmentExecutor.java" type="org.knime.core.node.workflow.capture.WorkflowSegmentExecutor">
+        <filter id="338792546">
+            <message_arguments>
+                <message_argument value="org.knime.core.node.workflow.capture.WorkflowSegmentExecutor"/>
+                <message_argument value="cancel()"/>
+            </message_arguments>
+        </filter>
+        <filter id="338792546">
+            <message_arguments>
+                <message_argument value="org.knime.core.node.workflow.capture.WorkflowSegmentExecutor"/>
+                <message_argument value="configureWorkflow(Map&lt;String,JsonValue&gt;)"/>
+            </message_arguments>
+        </filter>
+        <filter id="338792546">
+            <message_arguments>
+                <message_argument value="org.knime.core.node.workflow.capture.WorkflowSegmentExecutor"/>
+                <message_argument value="dispose()"/>
+            </message_arguments>
+        </filter>
+        <filter id="338792546">
+            <message_arguments>
+                <message_argument value="org.knime.core.node.workflow.capture.WorkflowSegmentExecutor"/>
+                <message_argument value="executeWorkflow(PortObject[], ExecutionContext)"/>
+            </message_arguments>
+        </filter>
+        <filter id="338792546">
+            <message_arguments>
+                <message_argument value="org.knime.core.node.workflow.capture.WorkflowSegmentExecutor"/>
+                <message_argument value="executeWorkflowAndCollectNodeMessages(PortObject[], ExecutionContext)"/>
+            </message_arguments>
+        </filter>
+        <filter id="338792546">
+            <message_arguments>
+                <message_argument value="org.knime.core.node.workflow.capture.WorkflowSegmentExecutor"/>
+                <message_argument value="getWorkflowManager()"/>
+            </message_arguments>
+        </filter>
+        <filter id="338886760">
+            <message_arguments>
+                <message_argument value="org.knime.core.node.workflow.capture.WorkflowSegmentExecutor.WorkflowSegmentExecutionResult"/>
+                <message_argument value="org.knime.core_5.8.0"/>
+            </message_arguments>
+        </filter>
+        <filter id="338886760">
+            <message_arguments>
+                <message_argument value="org.knime.core.node.workflow.capture.WorkflowSegmentExecutor.WorkflowSegmentNodeMessage"/>
+                <message_argument value="org.knime.core_5.8.0"/>
+            </message_arguments>
+        </filter>
+    </resource>
     <resource path="src/eclipse/org/knime/core/util/binning/BinningSettings.java" type="org.knime.core.util.binning.BinningSettings$BinBoundary$BinBoundaryExactMatchBehaviour">
         <filter id="388194388">
             <message_arguments>

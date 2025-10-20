@@ -114,8 +114,11 @@ public final class IsolatedExecutor {
 
         final BuilderParams m_params;
 
-        Builder(final BuilderParams params) {
+        boolean m_executeAll;
+
+        Builder(final BuilderParams params, final boolean executeAll) {
             m_params = params;
+            m_executeAll = executeAll;
         }
 
         /**
@@ -131,11 +134,11 @@ public final class IsolatedExecutor {
      * Represents the result of the executed workflow including a hierarchical list of the error and warning messages of
      * all nodes.
      *
-     * @param portObjectCopies the resulting port objects or {@code null} if the execution failed
+     * @param outputs the resulting port objects or {@code null} if the execution failed
      * @param flowVariables the resulting flow variables
      * @param nodeMessages a hierarchical list of the error and warning messages of all nodes
      */
-    public record WorkflowSegmentExecutionResult(PortObject[] portObjectCopies, List<FlowVariable> flowVariables,
+    public record WorkflowSegmentExecutionResult(PortObject[] outputs, List<FlowVariable> flowVariables,
         List<WorkflowSegmentNodeMessage> nodeMessages) {
         @Override
         public boolean equals(final Object obj) {
@@ -146,7 +149,7 @@ public final class IsolatedExecutor {
                 return false;
             }
             WorkflowSegmentExecutionResult result = (WorkflowSegmentExecutionResult)obj;
-            return Arrays.equals(portObjectCopies, result.portObjectCopies)
+            return Arrays.equals(outputs, result.outputs)
                 && Objects.equals(flowVariables, result.flowVariables)
                 && Objects.equals(nodeMessages, result.nodeMessages);
         }
@@ -155,7 +158,7 @@ public final class IsolatedExecutor {
         public int hashCode() {
             final int prime = 31;
             int result = 1;
-            result = prime * result + ((portObjectCopies == null) ? 0 : Arrays.hashCode(portObjectCopies));
+            result = prime * result + ((outputs == null) ? 0 : Arrays.hashCode(outputs));
             result = prime * result + ((flowVariables == null) ? 0 : flowVariables.hashCode());
             result = prime * result + ((nodeMessages == null) ? 0 : nodeMessages.hashCode());
             return result;
@@ -163,7 +166,7 @@ public final class IsolatedExecutor {
 
         @Override
         public String toString() {
-            return "WorkflowSegmentExecutionResult{" + "portObjectCopies=" + Arrays.toString(portObjectCopies)
+            return "WorkflowSegmentExecutionResult{" + "portObjectCopies=" + Arrays.toString(outputs)
                 + ", flowVariables=" + flowVariables + ", nodeMessages=" + nodeMessages + '}';
         }
 
@@ -234,6 +237,12 @@ public final class IsolatedExecutor {
 
     private final Builder m_builder;
 
+    private WorkflowManager m_hostWfm;
+
+    private boolean m_shallDisposeHostWfm;
+
+    private WorkflowManager m_wfm;
+
     private IsolatedExecutor(final Builder builder) {
         m_builder = builder;
     }
@@ -281,33 +290,34 @@ public final class IsolatedExecutor {
      *
      */
     public WorkflowSegmentExecutionResult execute(final WorkflowSegment ws, final PortObject[] inputData,
-        final Map<String, JsonValue> parameters, final Path dataAreaPath, final Restriction... restrictions) {
+        final Map<String, JsonValue> parameters, final Path dataAreaPath, final Restriction... restrictions)
+        throws KNIMEException, JsonException, InvalidSettingsException {
         var hostNode = m_builder.m_params.hostNode();
         var mode = m_builder.m_params.mode();
-        WorkflowManager hostWfm;
         if (mode == ExecutionMode.DETACHED) {
             var projWfm = hostNode.getParent().getProjectWFM();
-            hostWfm = createTemporaryWorkflowProject(projWfm.getWorkflowDataRepository(), projWfm.getContextV2());
+            m_hostWfm = WorkflowSegmentExecutor.createTemporaryWorkflowProject(projWfm.getWorkflowDataRepository(),
+                projWfm.getContextV2());
             m_shallDisposeHostWfm = true;
         } else {
-            hostWfm = hostNode.getParent();
+            m_hostWfm = hostNode.getParent();
             m_shallDisposeHostWfm = false;
         }
 
-        WorkflowManager wfm;
-        try (var unused = hostWfm.lock()) {
-            if (mode != ExecutionMode.DETACHED && !hostWfm.canModifyStructure()) {
+        try (var unused = m_hostWfm.lock()) {
+            if (mode != ExecutionMode.DETACHED && !m_hostWfm.canModifyStructure()) {
                 throw new KNIMEException(
                     "Cannot execute workflow segment in %s mode because it's part of an already executed component."
                         .formatted(mode.name().toLowerCase(Locale.ENGLISH)));
             }
-            wfm = hostWfm.createAndAddSubWorkflow(new PortType[0], new PortType[0], workflowName);
+            m_wfm =
+                m_hostWfm.createAndAddSubWorkflow(new PortType[0], new PortType[0], m_builder.m_params.workflowName());
         }
 
         var flowVirtualScopeContext = new FlowVirtualScopeContext(hostNode.getID(), dataAreaPath, restrictions);
-        wfm.setInitialScopeContext(flowVirtualScopeContext);
+        m_wfm.setInitialScopeContext(flowVirtualScopeContext);
         if (mode != ExecutionMode.DEBUG) {
-            wfm.hideInUI();
+            m_wfm.hideInUI();
         }
 
         // position
@@ -315,33 +325,34 @@ public final class IsolatedExecutor {
         if (startUIPlain != null) {
             NodeUIInformation startUI =
                 NodeUIInformation.builder(startUIPlain).translate(new int[]{60, -60, 0, 0}).build();
-            wfm.setUIInformation(startUI);
+            m_wfm.setUIInformation(startUI);
         }
 
         // copy workflow segment into metanode
         WorkflowManager segmentWorkflow = BuildWorkflowsUtil.loadWorkflow(ws, m_builder.m_params.loadWarningConsumer());
         NodeID[] ids = segmentWorkflow.getNodeContainers().stream().map(NodeContainer::getID).toArray(NodeID[]::new);
-        wfm.copyFromAndPasteHere(segmentWorkflow, WorkflowCopyContent.builder().setNodeIDs(ids).build());
+        m_wfm.copyFromAndPasteHere(segmentWorkflow, WorkflowCopyContent.builder().setNodeIDs(ids).build());
         // TODO?
         // ws.disposeWorkflow();
-        var virtualIONodes = addVirtualIONodes(ws, wfm);
+        var virtualIONodes = addVirtualIONodes(ws, m_wfm);
 
         if (parameters != null && !parameters.isEmpty()) {
-            wfm.setConfigurationNodes(parameters);
+            m_wfm.setConfigurationNodes(parameters);
         }
 
-        NativeNodeContainer virtualInNode = ((NativeNodeContainer)wfm.getNodeContainer(virtualIONodes.startId()));
+        NativeNodeContainer virtualInNode = ((NativeNodeContainer)m_wfm.getNodeContainer(virtualIONodes.startId()));
         DefaultVirtualPortObjectInNodeModel inNM = (DefaultVirtualPortObjectInNodeModel)virtualInNode.getNodeModel();
 
         var exec = m_builder.m_params.exec();
         flowVirtualScopeContext.registerHostNode(hostNode, exec);
 
-        inNM.setVirtualNodeInput(
-            new VirtualNodeInput(inputData, collectOutputFlowVariablesFromUpstreamNodes(hostNode)));
-        NativeNodeContainer nnc = (NativeNodeContainer)wfm.getNodeContainer(virtualIONodes.endId());
+        inNM.setVirtualNodeInput(new VirtualNodeInput(inputData,
+            WorkflowSegmentExecutor.collectOutputFlowVariablesFromUpstreamNodes(hostNode)));
+        NativeNodeContainer nnc = (NativeNodeContainer)m_wfm.getNodeContainer(virtualIONodes.endId());
 
         AtomicReference<Exception> exception = new AtomicReference<>();
-        WorkflowSegmentExecutor.executeAndWait(exec, exception);
+        WorkflowSegmentExecutor.executeAndWait(hostNode, m_wfm, exec,
+            m_builder.m_executeAll ? null : virtualIONodes.endId, exception);
 
         if (exception.get() != null) {
             throw exception.get();
@@ -354,10 +365,12 @@ public final class IsolatedExecutor {
         // }
 
         if (m_builder.m_params.collectMessages()) {
-            return collectNodeMessagesAndCreateResult(portObjectCopies, flowVariables, wfm);
+            boolean executionSuccessful = m_wfm.getNodeContainerState().isExecuted();
+            return collectNodeMessagesAndCreateResult(executionSuccessful ? portObjectCopies : null,
+                WorkflowSegmentExecutor.getFlowVariablesFromNC(nnc), m_wfm);
         } else {
-            // TODO
-            return null;
+            return new WorkflowSegmentExecutionResult(portObjectCopies,
+                WorkflowSegmentExecutor.getFlowVariablesFromNC(nnc), null);
         }
 
     }
@@ -380,10 +393,8 @@ public final class IsolatedExecutor {
      * @since 5.4
      */
     private static WorkflowSegmentExecutionResult collectNodeMessagesAndCreateResult(final PortObject[] outputs,
-        final List<FlowVariable> flowVariables, final WorkflowManager wfm) throws Exception {
-        boolean executionSuccessful = wfm.getNodeContainerState().isExecuted();
-        return new WorkflowSegmentExecutionResult(executionSuccessful ? outputs : null, flowVariables,
-            recursivelyExtractNodeMessages(wfm));
+        final List<FlowVariable> flowVariables, final WorkflowManager wfm) {
+        return new WorkflowSegmentExecutionResult(outputs, flowVariables, recursivelyExtractNodeMessages(wfm));
     }
 
     private static VirtualIONodes addVirtualIONodes(final WorkflowSegment wf, final WorkflowManager wfm) {
@@ -464,7 +475,8 @@ public final class IsolatedExecutor {
     }
 
     /**
-     * TODO
+     * Cancels the execution if it is running and removes the virtual node containing the workflow segment from the
+     * hosting workflow.
      */
     public void dispose() {
         cancel();
@@ -474,6 +486,25 @@ public final class IsolatedExecutor {
             WorkflowManager.ROOT.removeProject(m_hostWfm.getID());
         }
         m_hostWfm = null;
+    }
+
+    /**
+     * Cancels the execution of the workflow segment.
+     *
+     * @throws IllegalStateException if the underlying workflow has been disposed already
+     */
+    public void cancel() {
+        checkWfmNonNull();
+        if (m_wfm.getNodeContainerState().isExecutionInProgress()) {
+            m_wfm.cancelExecution(m_wfm);
+        }
+    }
+
+    private void checkWfmNonNull() {
+        if (m_wfm == null) {
+            throw new IllegalStateException(
+                "Can't extract error messages from workflow segment. Workflow has been disposed already.");
+        }
     }
 
     private record VirtualIONodes(NodeID startId, NodeID endId) {
