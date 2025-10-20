@@ -100,17 +100,16 @@ import org.knime.core.node.workflow.NodeContext;
 import org.knime.core.node.workflow.NodeID;
 import org.knime.core.node.workflow.NodeID.NodeIDSuffix;
 import org.knime.core.node.workflow.WorkflowManager;
+import org.knime.core.node.workflow.capture.IsolatedExecutor;
 import org.knime.core.node.workflow.capture.WorkflowSegment;
 import org.knime.core.node.workflow.capture.WorkflowSegment.Input;
 import org.knime.core.node.workflow.capture.WorkflowSegment.Output;
 import org.knime.core.node.workflow.capture.WorkflowSegment.PortID;
 import org.knime.core.node.workflow.capture.WorkflowSegmentExecutor;
 import org.knime.core.node.workflow.capture.WorkflowSegmentExecutor.ExecutionMode;
-import org.knime.core.node.workflow.capture.WorkflowSegmentExecutor.WorkflowSegmentExecutionResult;
 import org.knime.core.node.workflow.virtual.VirtualNodeContext.Restriction;
 import org.knime.core.util.FileUtil;
 import org.knime.core.util.JsonUtil;
-import org.knime.core.util.Pair;
 
 import jakarta.json.JsonObject;
 import jakarta.json.JsonValue;
@@ -460,8 +459,8 @@ public final class WorkflowToolCell extends FileStoreCell implements WorkflowToo
         final Map<String, String> executionHints) {
         var ws = deserializeWorkflowSegment();
         var name = ws.loadWorkflow().getName();
-        var hostNode = NodeContext.getContext().getNodeContainer();
-        WorkflowSegmentExecutor wsExecutor = null;
+        var hostNode = (NativeNodeContainer)NodeContext.getContext().getNodeContainer();
+        IsolatedExecutor wsExecutor = null;
         var execMode =
             ExecutionMode.valueOf(Optional.ofNullable(executionHints.get("execution-mode")).orElse("DEFAULT"));
         var isDebugMode = execMode == ExecutionMode.DEBUG;
@@ -470,12 +469,20 @@ public final class WorkflowToolCell extends FileStoreCell implements WorkflowToo
         try {
             var metanodeName = (isDebugMode ? "Debug: " : "") + name;
             dataAreaPath = copyDataAreaToTempDir().orElse(null);
-            wsExecutor = new WorkflowSegmentExecutor(ws, metanodeName, hostNode, execMode, true, warning -> {
-            }, dataAreaPath, Restriction.WORKFLOW_RELATIVE_RESOURCE_ACCESS, Restriction.WORKFLOW_DATA_AREA_ACCESS);
-            if (!StringUtils.isBlank(parameters)) {
-                wsExecutor.configureWorkflow(parseParameters(parameters));
-            }
-            var result = wsExecutor.executeWorkflowAndCollectNodeMessages(inputs, exec);
+            wsExecutor = WorkflowSegmentExecutor.builder( //
+                hostNode, //
+                execMode, //
+                "workflow name TODO", //
+                warning -> {
+                }, //
+                exec, //
+                false).isolated(true).build();
+            var result = wsExecutor.execute( //
+                ws, //
+                inputs, //
+                StringUtils.isBlank(parameters) ? null : parseParameters(parameters), //
+                dataAreaPath, //
+                Restriction.WORKFLOW_RELATIVE_RESOURCE_ACCESS, Restriction.WORKFLOW_DATA_AREA_ACCESS);
             disposeWorkflowSegmentExecutor = !isDebugMode || result.portObjectCopies() != null;
             var wfm = wsExecutor.getWorkflowManager();
             String[] viewNodeIds = null;
@@ -509,24 +516,9 @@ public final class WorkflowToolCell extends FileStoreCell implements WorkflowToo
     }
 
     @Override
-    // TODO de-duplicate
-    public WorkflowToolResult execute(final String parameters, final List<Pair<NodeID, Integer>> inputs,
-        final WorkflowManager wfm, final ExecutionContext exec, final Map<String, String> executionHints) {
-        var ws = deserializeWorkflowSegment();
-        // TODO check parameters blank?
-        var result = WorkflowSegmentExecutor.executeWorkflow(ws, wfm, inputs, parseParameters(parameters));
-
-        String[] viewNodeIds = null;
-        if (Boolean.parseBoolean(executionHints.get("with-view-nodes"))) {
-            viewNodeIds = result.component().getWorkflowManager().getNodeContainers().stream()
-                .filter(nc -> nc instanceof NativeNodeContainer nnc
-                    && nnc.getNode().getFactory() instanceof WizardPageContribution wpc && wpc.hasNodeView()) //
-                .map(nc -> NodeIDSuffix.create(wfm.getID(), nc.getID()).toString()).toArray(String[]::new);
-        }
-
-        return new WorkflowToolResult(extractMessage(result.result()), removeMessageOutput(result.ids()),
-            removeMessageOutput(result.result().portObjectCopies()),
-            viewNodeIds != null && viewNodeIds.length > 0 ? wfm : null, viewNodeIds);
+    public WorkflowSegment getWorkflowSegment() {
+        // TODO cache?
+        return deserializeWorkflowSegment();
     }
 
     private Optional<Path> copyDataAreaToTempDir() throws IOException {
