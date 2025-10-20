@@ -63,7 +63,6 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.knime.core.node.CanceledExecutionException;
 import org.knime.core.node.ExecutionContext;
-import org.knime.core.node.InvalidSettingsException;
 import org.knime.core.node.KNIMEException;
 import org.knime.core.node.Node;
 import org.knime.core.node.exec.dataexchange.PortObjectRepository;
@@ -94,7 +93,6 @@ import org.knime.core.node.workflow.virtual.VirtualNodeInput;
 import org.knime.core.node.workflow.virtual.parchunk.FlowVirtualScopeContext;
 import org.knime.core.util.Pair;
 
-import jakarta.json.JsonException;
 import jakarta.json.JsonValue;
 
 /**
@@ -283,15 +281,12 @@ public final class IsolatedExecutor {
      * @param dataAreaPath absolute path to the workflow's data area or {@code null} if none
      * @param restrictions restrictions on the execution of the workflow segment
      * @return TODO
-     * @throws KNIMEException If the workflow can't be instantiated from the segment.
-     * @throws InvalidSettingsException if there is no node for a given parameter name or the validation of the new
-     *             configuration value failed
-     * @throws JsonException if configuration couldn't be parsed from the json object
+     * @throws Exception TODO
      *
      */
     public WorkflowSegmentExecutionResult execute(final WorkflowSegment ws, final PortObject[] inputData,
         final Map<String, JsonValue> parameters, final Path dataAreaPath, final Restriction... restrictions)
-        throws KNIMEException, JsonException, InvalidSettingsException {
+        throws Exception {
         var hostNode = m_builder.m_params.hostNode();
         var mode = m_builder.m_params.mode();
         if (mode == ExecutionMode.DETACHED) {

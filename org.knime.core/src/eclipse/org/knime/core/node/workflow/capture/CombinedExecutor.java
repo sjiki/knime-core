@@ -119,7 +119,7 @@ public final class CombinedExecutor {
         }
     }
 
-    record PortId(NodeIDSuffix nodeIDSuffix, int portIndex) {
+    public record PortId(NodeIDSuffix nodeIDSuffix, int portIndex) {
 
     }
 
@@ -136,13 +136,14 @@ public final class CombinedExecutor {
         List<WorkflowSegmentNodeMessage> nodeMessages, String[] ids, SubNodeContainer component) {
     }
 
+    private WorkflowManager m_hostWfm;
+
     private CombinedExecutor(final Builder builder) {
         var hostNode = builder.m_params.hostNode();
         var projWfm = hostNode.getParent().getProjectWFM();
-        WorkflowManager wfm;
         try {
             // TODO proper workflow name?
-            wfm = WorkflowSegmentExecutor.createTemporaryWorkflowProject(projWfm.getWorkflowDataRepository(),
+            m_hostWfm = WorkflowSegmentExecutor.createTemporaryWorkflowProject(projWfm.getWorkflowDataRepository(),
                 projWfm.getContextV2());
         } catch (KNIMEException ex) {
             // TODO
@@ -150,8 +151,8 @@ public final class CombinedExecutor {
         }
         PortType[] inTypes = Stream.of(builder.m_initialInputs)
             .map(i -> PortTypeRegistry.getInstance().getPortType(i.getClass())).toArray(PortType[]::new);
-        var virtualInId = wfm.createAndAddNode(new DefaultVirtualPortObjectInNodeFactory(inTypes));
-        ((DefaultVirtualPortObjectInNodeModel)((NativeNodeContainer)wfm.getNodeContainer(virtualInId)).getNodeModel())
+        var virtualInId = m_hostWfm.createAndAddNode(new DefaultVirtualPortObjectInNodeFactory(inTypes));
+        ((DefaultVirtualPortObjectInNodeModel)((NativeNodeContainer)m_hostWfm.getNodeContainer(virtualInId)).getNodeModel())
             .setVirtualNodeInput(new VirtualNodeInput(builder.m_initialInputs, Collections.emptyList()));
     }
 
@@ -161,7 +162,7 @@ public final class CombinedExecutor {
      * @return
      */
     public WorkflowManager getWorkflow() {
-        return parent;
+        return m_hostWfm;
     }
 
     /**
@@ -170,16 +171,16 @@ public final class CombinedExecutor {
      * @param parameters a map of parameter names to the new to be set configuration value as json. Sets the
      *            configuration of the (config) nodes referenced by the given parameter name. Only considers nodes on
      *            the top level (cp. {@link WorkflowManager#setConfigurationNodes(Map)}). Can be {@code null}.
-     * @return
+     * @return TODO
      */
-    WorkflowSegmentExecutionResult execute(final WorkflowSegment ws, final List<PortId> inputs,
+    public WorkflowSegmentExecutionResult execute(final WorkflowSegment ws, final List<PortId> inputs,
         final Map<String, JsonValue> parameters) {
         var wfm = ws.loadWorkflow();
 
         var orgNodeIds = wfm.getNodeContainers().stream().map(NodeContainer::getID).toArray(NodeID[]::new);
         var persistor = wfm.copy(WorkflowCopyContent.builder().setNodeIDs(orgNodeIds)
             .setAnnotationIDs(wfm.getWorkflowAnnotationIDs().toArray(WorkflowAnnotationID[]::new)).build());
-        var copyContent = parent.paste(persistor);
+        var copyContent = m_hostWfm.paste(persistor);
         var nodeIdMapping = new HashMap<NodeIDSuffix, NodeID>();
         for (int i = 0; i < orgNodeIds.length; i++) {
             nodeIdMapping.put(NodeIDSuffix.create(wfm.getID(), orgNodeIds[i]), copyContent.getNodeIDs()[i]);
@@ -191,20 +192,20 @@ public final class CombinedExecutor {
         for (int i = 0; i < inputs.size(); i++) {
             for (var portId : wsInputs.get(i).getConnectedPorts()) {
                 var nodeId = nodeIdMapping.get(portId.getNodeIDSuffix());
-                parent.addConnection(inputs.get(i).getFirst(), inputs.get(i).getSecond(), nodeId, portId.getIndex());
+                m_hostWfm.addConnection(toNodeID(inputs.get(i)), inputs.get(i).portIndex(), nodeId, portId.getIndex());
             }
         }
 
         // connect outputs
         List<PortType> outTypes = new ArrayList<>();
         List<Pair<NodeID, Integer>> outPorts = new ArrayList<>();
-        for (var outputNodeId : parent.findNodes(DefaultVirtualPortObjectOutNodeModel.class, false).keySet()) {
+        for (var outputNodeId : m_hostWfm.findNodes(DefaultVirtualPortObjectOutNodeModel.class, false).keySet()) {
             // collect outports that are already connected to the output node
-            parent.getIncomingConnectionsFor(outputNodeId).forEach(cc -> {
-                outTypes.add(parent.getNodeContainer(cc.getSource()).getOutPort(cc.getSourcePort()).getPortType());
+            m_hostWfm.getIncomingConnectionsFor(outputNodeId).forEach(cc -> {
+                outTypes.add(m_hostWfm.getNodeContainer(cc.getSource()).getOutPort(cc.getSourcePort()).getPortType());
                 outPorts.add(Pair.create(cc.getSource(), cc.getSourcePort()));
             });
-            parent.removeNode(outputNodeId);
+            m_hostWfm.removeNode(outputNodeId);
         }
         var wsOutputs = ws.getConnectedOutputs();
         wsOutputs.stream().filter(o -> o.getConnectedPort().isPresent() && o.getType().isPresent()).forEach(o -> {
@@ -214,19 +215,19 @@ public final class CombinedExecutor {
             outPorts.add(Pair.create(nodeId, portId.get().getIndex()));
         });
         var outputNodeId =
-            parent.createAndAddNode(new DefaultVirtualPortObjectOutNodeFactory(outTypes.toArray(PortType[]::new)));
+            m_hostWfm.createAndAddNode(new DefaultVirtualPortObjectOutNodeFactory(outTypes.toArray(PortType[]::new)));
         for (int i = 0; i < outPorts.size(); i++) {
-            parent.addConnection(outPorts.get(i).getFirst(), outPorts.get(i).getSecond(), outputNodeId, i + 1);
+            m_hostWfm.addConnection(outPorts.get(i).getFirst(), outPorts.get(i).getSecond(), outputNodeId, i + 1);
         }
 
         // collapse into component
-        var componentId = parent.convertMetaNodeToSubNode(
-            parent.collapseIntoMetaNode(copyContent.getNodeIDs(), copyContent.getAnnotationIDs(), ws.getName())
+        var componentId = m_hostWfm.convertMetaNodeToSubNode(
+            m_hostWfm.collapseIntoMetaNode(copyContent.getNodeIDs(), copyContent.getAnnotationIDs(), ws.getName())
                 .getCollapsedMetanodeID())
             .getConvertedNodeID();
 
         // configuration nodes
-        var component = (SubNodeContainer)parent.getNodeContainer(componentId);
+        var component = (SubNodeContainer)m_hostWfm.getNodeContainer(componentId);
         if (parameters != null && !parameters.isEmpty()) {
             try {
                 component.getWorkflowManager().setConfigurationNodes(parameters);
@@ -239,17 +240,21 @@ public final class CombinedExecutor {
         // TODO layouting
 
         // execute and extract tool outputs
-        parent.executeAllAndWaitUntilDone();
-        var outputs = parent.getIncomingConnectionsFor(outputNodeId).stream() //
+        m_hostWfm.executeAllAndWaitUntilDone();
+        var outputs = m_hostWfm.getIncomingConnectionsFor(outputNodeId).stream() //
             .filter(cc -> cc.getSource().equals(componentId)) //
             .map(cc -> component.getOutPort(cc.getSourcePort()).getPortObject()) //
             .toArray(PortObject[]::new);
-        var ids = parent.getIncomingConnectionsFor(outputNodeId).stream() //
+        var ids = m_hostWfm.getIncomingConnectionsFor(outputNodeId).stream() //
             .filter(cc -> cc.getSource().equals(componentId)) //
-            .map(cc -> NodeIDSuffix.create(parent.getID(), cc.getSource()) + "#" + cc.getSourcePort()) //
+            .map(cc -> NodeIDSuffix.create(m_hostWfm.getID(), cc.getSource()) + "#" + cc.getSourcePort()) //
             .toArray(String[]::new);
-        // TODO flow variables and error/warning messages
+        // TODO flow variables and collect error/warning messages
         return new WorkflowSegmentExecutionResult(outputs, List.of(), List.of(), ids, component);
+    }
+
+    private NodeID toNodeID(final PortId portId) {
+        return portId.nodeIDSuffix().prependParent(m_hostWfm.getID());
     }
 
     /**
