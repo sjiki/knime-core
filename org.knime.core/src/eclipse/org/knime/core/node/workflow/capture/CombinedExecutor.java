@@ -305,7 +305,22 @@ public final class CombinedExecutor {
      * TODO
      */
     public void dispose() {
-        // TODO
+        dispose(true);
     }
+
+    /**
+     * TODO
+     *
+     * @param disposeWorkflow
+     */
+    public void dispose(final boolean disposeWorkflow) {
+        if (disposeWorkflow) {
+            WorkflowSegmentExecutor.cancel(m_wfm);
+            m_wfm.getParent().removeProject(m_wfm.getID());
+        }
+        m_wfm = null;
+        m_hostNode = null;
+    }
+
 
 }

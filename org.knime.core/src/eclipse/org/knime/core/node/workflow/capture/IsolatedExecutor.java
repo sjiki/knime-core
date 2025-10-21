@@ -490,9 +490,7 @@ public final class IsolatedExecutor {
      */
     public void cancel() {
         checkWfmNonNull();
-        if (m_wfm.getNodeContainerState().isExecutionInProgress()) {
-            m_wfm.cancelExecution(m_wfm);
-        }
+        WorkflowSegmentExecutor.cancel(m_wfm);
     }
 
     private void checkWfmNonNull() {

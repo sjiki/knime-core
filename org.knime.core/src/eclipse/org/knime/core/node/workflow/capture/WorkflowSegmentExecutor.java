@@ -323,4 +323,16 @@ public final class WorkflowSegmentExecutor {
         return res;
     }
 
+    static void cancel(final WorkflowManager wfm) {
+        if (wfm.getNodeContainerState().isExecutionInProgress()) {
+            wfm.cancelExecution(wfm);
+        }
+        try {
+            wfm.waitWhileInExecution(5, TimeUnit.SECONDS);
+        } catch (InterruptedException ex) {
+            // TODO
+            throw new RuntimeException(ex);
+        }
+    }
+
 }
