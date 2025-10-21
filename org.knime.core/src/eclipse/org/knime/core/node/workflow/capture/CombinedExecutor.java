@@ -316,11 +316,14 @@ public final class CombinedExecutor {
     public void dispose(final boolean disposeWorkflow) {
         if (disposeWorkflow) {
             WorkflowSegmentExecutor.cancel(m_wfm);
-            m_wfm.getParent().removeProject(m_wfm.getID());
+            if (m_wfm.isProject()) {
+                m_wfm.getParent().removeProject(m_wfm.getID());
+            } else {
+                m_wfm.getParent().removeNode(m_wfm.getID());
+            }
         }
         m_wfm = null;
         m_hostNode = null;
     }
-
 
 }
