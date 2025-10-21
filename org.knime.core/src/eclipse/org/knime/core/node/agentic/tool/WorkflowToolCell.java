@@ -63,6 +63,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
@@ -100,8 +101,8 @@ import org.knime.core.node.workflow.NodeContext;
 import org.knime.core.node.workflow.NodeID;
 import org.knime.core.node.workflow.NodeID.NodeIDSuffix;
 import org.knime.core.node.workflow.WorkflowManager;
+import org.knime.core.node.workflow.capture.CombinedExecutor;
 import org.knime.core.node.workflow.capture.IsolatedExecutor;
-import org.knime.core.node.workflow.capture.IsolatedExecutor.WorkflowSegmentExecutionResult;
 import org.knime.core.node.workflow.capture.WorkflowSegment;
 import org.knime.core.node.workflow.capture.WorkflowSegment.Input;
 import org.knime.core.node.workflow.capture.WorkflowSegment.Output;
@@ -498,8 +499,8 @@ public final class WorkflowToolCell extends FileStoreCell implements WorkflowToo
                     disposeWorkflowSegmentExecutor = false;
                 }
             }
-            return new WorkflowToolResult(extractMessage(result), null /* TODO */,
-                removeMessageOutput(result.outputs()), virtualProject, viewNodeIds);
+            return new WorkflowToolResult(extractMessage(result.outputs(), result::compileSingleErrorMessage),
+                null /* TODO */, removeMessageOutput(result.outputs()), virtualProject, viewNodeIds);
         } catch (Exception ex) {
             var message = "Failed to execute tool: " + name + ": " + ex.getMessage();
             NodeLogger.getLogger(getClass()).error(message, ex);
@@ -517,9 +518,29 @@ public final class WorkflowToolCell extends FileStoreCell implements WorkflowToo
     }
 
     @Override
-    public WorkflowSegment getWorkflowSegment() {
-        // TODO cache?
-        return deserializeWorkflowSegment();
+    public WorkflowToolResult execute(final CombinedExecutor workflowExecutor, final String parameters,
+        final List<CombinedExecutor.PortId> inputs, final ExecutionContext exec,
+        final Map<String, String> executionHints) {
+        if (workflowExecutor == null) {
+            throw new IllegalStateException("No combined tools workflow executor initialized");
+        }
+
+        var ws = deserializeWorkflowSegment();
+        var result =
+            workflowExecutor.execute(ws, inputs, parseParameters(parameters));
+
+        String[] viewNodeIds = null;
+        if (Boolean.parseBoolean(executionHints.get("with-view-nodes"))) {
+            viewNodeIds = result.component().getWorkflowManager().getNodeContainers().stream()
+                .filter(nc -> nc instanceof NativeNodeContainer nnc
+                    && nnc.getNode().getFactory() instanceof WizardPageContribution wpc && wpc.hasNodeView()) //
+                .map(nc -> NodeIDSuffix.create(workflowExecutor.getWorkflow().getID(), nc.getID()).toString())
+                .toArray(String[]::new);
+        }
+
+        return new WorkflowToolResult(extractMessage(result.outputs(), () -> "" /*TODO */),
+            removeMessageOutput(result.ids()), removeMessageOutput(result.outputs()),
+            viewNodeIds != null && viewNodeIds.length > 0 ? workflowExecutor.getWorkflow() : null, viewNodeIds);
     }
 
     private Optional<Path> copyDataAreaToTempDir() throws IOException {
@@ -556,10 +577,9 @@ public final class WorkflowToolCell extends FileStoreCell implements WorkflowToo
      * @param result the workflow segment execution result.
      * @return the extracted tool message as a single string.
      */
-    private String extractMessage(final WorkflowSegmentExecutionResult result) {
-        var outputs = result.outputs();
+    private String extractMessage(final PortObject[] outputs, final Supplier<String> singleErrorMessags) {
         if (outputs == null) {
-            return "Tool execution failed with: " + result.compileSingleErrorMessage();
+            return "Tool execution failed with: " + singleErrorMessags.get();
         }
         if (m_messageOutputPortIndex == -1) {
             return "Tool executed successfully (no custom tool message output)";

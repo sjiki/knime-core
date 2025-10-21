@@ -59,8 +59,8 @@ import org.knime.core.data.v2.filestore.AbstractFileStoreValueFactory;
 import org.knime.core.node.ExecutionContext;
 import org.knime.core.node.agentic.tool.ToolValue.ToolPort;
 import org.knime.core.node.port.PortObject;
-import org.knime.core.node.workflow.NodeID;
-import org.knime.core.node.workflow.WorkflowManager;
+import org.knime.core.node.workflow.capture.CombinedExecutor;
+import org.knime.core.node.workflow.capture.CombinedExecutor.PortId;
 import org.knime.core.table.access.IntAccess.IntReadAccess;
 import org.knime.core.table.access.IntAccess.IntWriteAccess;
 import org.knime.core.table.access.ListAccess.ListReadAccess;
@@ -74,7 +74,6 @@ import org.knime.core.table.schema.IntDataSpec;
 import org.knime.core.table.schema.ListDataSpec;
 import org.knime.core.table.schema.StringDataSpec;
 import org.knime.core.table.schema.StructDataSpec;
-import org.knime.core.util.Pair;
 
 /**
  * De-/serialization of {@link WorkflowToolValue}s.
@@ -211,10 +210,12 @@ public final class WorkflowToolValueFactory extends AbstractFileStoreValueFactor
             return ((WorkflowToolValue)super.getDataCell()).execute(parameters, inputs, exec, executionHints);
         }
 
+
         @Override
-        public WorkflowToolResult execute(final String parameters, final List<Pair<NodeID, Integer>> inputs,
-            final WorkflowManager wfm, final ExecutionContext exec, final Map<String, String> executionHints) {
-            return ((WorkflowToolValue)super.getDataCell()).execute(parameters, inputs, wfm, exec, executionHints);
+        public WorkflowToolResult execute(final CombinedExecutor workflowExecutor, final String parameters, final List<PortId> inputs,
+            final ExecutionContext exec, final Map<String, String> executionHints) {
+            return ((WorkflowToolValue)super.getDataCell()).execute(workflowExecutor, parameters, inputs, exec,
+                executionHints);
         }
 
     }

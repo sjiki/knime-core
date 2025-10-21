@@ -48,12 +48,13 @@
  */
 package org.knime.core.node.agentic.tool;
 
+import java.util.List;
 import java.util.Map;
 
 import org.knime.core.node.ExecutionContext;
 import org.knime.core.node.port.PortObject;
 import org.knime.core.node.workflow.WorkflowManager;
-import org.knime.core.node.workflow.capture.WorkflowSegment;
+import org.knime.core.node.workflow.capture.CombinedExecutor;
 import org.knime.core.node.workflow.capture.WorkflowSegmentExecutor.ExecutionMode;
 
 /**
@@ -85,10 +86,20 @@ public interface WorkflowToolValue extends ToolValue {
         Map<String, String> executionHints);
 
     /**
-     * @return TODO
-     * @noreference This class is not intended to be referenced by clients.
+     * TODO
+     *
+     * @param workflowExecutor
+     * @param parameters
+     * @param inputs
+     * @param exec
+     * @param executionHints
+     * @return
+     *
+     * @noreference This method is not intended to be referenced by clients.
      */
-    WorkflowSegment getWorkflowSegment();
+    WorkflowToolResult execute(final CombinedExecutor workflowExecutor, final String parameters,
+        final List<CombinedExecutor.PortId> inputs, final ExecutionContext exec,
+        final Map<String, String> executionHints);
 
     /**
      * The tool execution result with additional information only relevant for workflow-tool-execution.
