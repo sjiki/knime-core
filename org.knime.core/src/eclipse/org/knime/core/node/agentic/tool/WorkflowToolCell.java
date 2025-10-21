@@ -526,8 +526,16 @@ public final class WorkflowToolCell extends FileStoreCell implements WorkflowToo
         }
 
         var ws = deserializeWorkflowSegment();
+        Path dataAreaPath;
+        try {
+            dataAreaPath = copyDataAreaToTempDir().orElse(null);
+        } catch (IOException ex) {
+            // TODO
+            throw new RuntimeException("Failed to copy data area to temporary location", ex);
+        }
         var result =
-            workflowExecutor.execute(ws, inputs, parseParameters(parameters));
+            workflowExecutor.execute(ws, inputs, parseParameters(parameters), dataAreaPath,
+                Restriction.WORKFLOW_RELATIVE_RESOURCE_ACCESS, Restriction.WORKFLOW_DATA_AREA_ACCESS);
 
         String[] viewNodeIds = null;
         if (Boolean.parseBoolean(executionHints.get("with-view-nodes"))) {

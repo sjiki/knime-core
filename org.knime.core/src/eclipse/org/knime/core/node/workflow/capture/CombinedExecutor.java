@@ -48,6 +48,7 @@
  */
 package org.knime.core.node.workflow.capture;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -75,7 +76,9 @@ import org.knime.core.node.workflow.virtual.DefaultVirtualPortObjectInNodeFactor
 import org.knime.core.node.workflow.virtual.DefaultVirtualPortObjectInNodeModel;
 import org.knime.core.node.workflow.virtual.DefaultVirtualPortObjectOutNodeFactory;
 import org.knime.core.node.workflow.virtual.DefaultVirtualPortObjectOutNodeModel;
+import org.knime.core.node.workflow.virtual.VirtualNodeContext.Restriction;
 import org.knime.core.node.workflow.virtual.VirtualNodeInput;
+import org.knime.core.node.workflow.virtual.parchunk.FlowVirtualScopeContext;
 import org.knime.core.util.Pair;
 
 import jakarta.json.JsonException;
@@ -100,15 +103,18 @@ public final class CombinedExecutor {
 
         final PortObject[] m_initialInputs;
 
+        WorkflowManager m_combinedWorkflow;
+
         Builder(final BuilderParams params, final PortObject[] initialInputs) {
             m_params = params;
             m_initialInputs = initialInputs;
+            m_combinedWorkflow = null;
         }
 
         Builder(final BuilderParams params, final WorkflowManager combinedWorkflow) {
             m_params = params;
+            m_combinedWorkflow = combinedWorkflow;
             m_initialInputs = null;
-            // TODO
         }
 
         /**
@@ -119,6 +125,12 @@ public final class CombinedExecutor {
         }
     }
 
+    /**
+     * TODO
+     *
+     * @param nodeIDSuffix
+     * @param portIndex
+     */
     public record PortId(NodeIDSuffix nodeIDSuffix, int portIndex) {
 
     }
@@ -138,22 +150,30 @@ public final class CombinedExecutor {
 
     private WorkflowManager m_hostWfm;
 
+    private NativeNodeContainer m_hostNode;
+
     private CombinedExecutor(final Builder builder) {
-        var hostNode = builder.m_params.hostNode();
-        var projWfm = hostNode.getParent().getProjectWFM();
-        try {
-            // TODO proper workflow name?
-            m_hostWfm = WorkflowSegmentExecutor.createTemporaryWorkflowProject(projWfm.getWorkflowDataRepository(),
-                projWfm.getContextV2());
-        } catch (KNIMEException ex) {
-            // TODO
-            throw new RuntimeException(ex);
+        m_hostNode = builder.m_params.hostNode();
+        if (builder.m_combinedWorkflow == null) {
+            assert builder.m_initialInputs != null;
+            var projWfm = m_hostNode.getParent().getProjectWFM();
+            try {
+                // TODO proper workflow name?
+                m_hostWfm = WorkflowSegmentExecutor.createTemporaryWorkflowProject(projWfm.getWorkflowDataRepository(),
+                    projWfm.getContextV2());
+            } catch (KNIMEException ex) {
+                // TODO
+                throw new RuntimeException(ex);
+            }
+            PortType[] inTypes = Stream.of(builder.m_initialInputs)
+                .map(i -> PortTypeRegistry.getInstance().getPortType(i.getClass())).toArray(PortType[]::new);
+            var virtualInId = m_hostWfm.createAndAddNode(new DefaultVirtualPortObjectInNodeFactory(inTypes));
+            ((DefaultVirtualPortObjectInNodeModel)((NativeNodeContainer)m_hostWfm.getNodeContainer(virtualInId))
+                .getNodeModel())
+                    .setVirtualNodeInput(new VirtualNodeInput(builder.m_initialInputs, Collections.emptyList()));
+        } else {
+            m_hostWfm = builder.m_combinedWorkflow;
         }
-        PortType[] inTypes = Stream.of(builder.m_initialInputs)
-            .map(i -> PortTypeRegistry.getInstance().getPortType(i.getClass())).toArray(PortType[]::new);
-        var virtualInId = m_hostWfm.createAndAddNode(new DefaultVirtualPortObjectInNodeFactory(inTypes));
-        ((DefaultVirtualPortObjectInNodeModel)((NativeNodeContainer)m_hostWfm.getNodeContainer(virtualInId)).getNodeModel())
-            .setVirtualNodeInput(new VirtualNodeInput(builder.m_initialInputs, Collections.emptyList()));
     }
 
     /**
@@ -171,10 +191,12 @@ public final class CombinedExecutor {
      * @param parameters a map of parameter names to the new to be set configuration value as json. Sets the
      *            configuration of the (config) nodes referenced by the given parameter name. Only considers nodes on
      *            the top level (cp. {@link WorkflowManager#setConfigurationNodes(Map)}). Can be {@code null}.
+     * @param dataAreaPath absolute path to the workflow's data area or {@code null} if none
+     * @param restrictions restrictions on the execution of the workflow segment
      * @return TODO
      */
     public WorkflowSegmentExecutionResult execute(final WorkflowSegment ws, final List<PortId> inputs,
-        final Map<String, JsonValue> parameters) {
+        final Map<String, JsonValue> parameters, final Path dataAreaPath, final Restriction... restrictions) {
         var wfm = ws.loadWorkflow();
 
         var orgNodeIds = wfm.getNodeContainers().stream().map(NodeContainer::getID).toArray(NodeID[]::new);
@@ -236,6 +258,9 @@ public final class CombinedExecutor {
                 throw new RuntimeException(ex);
             }
         }
+
+        var flowVirtualScopeContext = new FlowVirtualScopeContext(m_hostNode.getID(), dataAreaPath, restrictions);
+        component.getWorkflowManager().setInitialScopeContext(flowVirtualScopeContext);
 
         // TODO layouting
 
