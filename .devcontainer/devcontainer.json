@@ -1,0 +1,4 @@
+{
+  "image": "knime/knime:r-5.8.0-402",
+  "features": {}
+}
